@@ -29,6 +29,9 @@ from threading import Thread,Event
 #import multiprocessing
 import torch.multiprocessing as mp
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from aiohttp import web
 import aiohttp
 import aiohttp_cors
