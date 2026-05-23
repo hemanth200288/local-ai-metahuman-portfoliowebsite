@@ -323,19 +323,77 @@
                 messagesContainer.append(messageElement);
             }
 
-            // Start/Stop buttons
-            $('#start').click(function() {
-                start();
-                $(this).hide();
-                $('#stop').show();
-                addChatMessage("Initializing connection...", 'system');
-            });
+            // Automated Turn-taking Logic
+            let autoRecordEnabled = true;
+            window.lastSpeakingState = false;
 
-            $('#stop').click(function() {
-                stop();
-                $(this).hide();
-                $('#start').show();
-                addChatMessage("Connection closed.", 'system');
+            function checkAvatarSpeaking() {
+                if (!autoRecordEnabled) return;
+                const sid = String(document.getElementById('sessionid').value);
+                if (sid === "0") return; // Session not initialized
+
+                fetch('/is_speaking', {
+                    method: 'POST',
+                    body: JSON.stringify({ sessionid: sid }),
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    const isSpeaking = data.data;
+                    // If avatar was speaking and now stopped, start mic
+                    if (window.lastSpeakingState === true && isSpeaking === false) {
+                        console.log('Avatar stopped speaking, starting mic automatically...');
+                        if (!isRecording) startRecording();
+                    }
+                    window.lastSpeakingState = isSpeaking;
+                })
+                .catch(err => console.error('Poll error:', err));
+            }
+
+            // Polling for speaking state to trigger turns
+            setInterval(checkAvatarSpeaking, 800);
+
+            // Auto-start on load
+            function autoStart() {
+                updateConnectionStatus('connecting');
+                start();
+                $('#start').hide();
+                $('#stop').show();
+                addChatMessage("AI Assistant waking up...", 'system');
+                
+                // Wait for connection, then greet
+                let greetAttempted = false;
+                let checkTimer = setInterval(() => {
+                    const sid = String(document.getElementById('sessionid').value);
+                    const video = document.getElementById('video');
+                    
+                    if (sid !== "0" && video.readyState >= 2 && !greetAttempted) {
+                        greetAttempted = true;
+                        clearInterval(checkTimer);
+                        
+                        setTimeout(() => {
+                            console.log('Auto-triggering initial greeting for session:', sid);
+                            fetch('/human', {
+                                body: JSON.stringify({
+                                    text: "Hello! I am your AI portfolio assistant. I have automatically activated to help you. How can I assist you today?",
+                                    type: 'chat',
+                                    interrupt: true,
+                                    sessionid: sid,
+                                }),
+                                headers: { 'Content-Type': 'application/json' },
+                                method: 'POST'
+                            });
+                        }, 2000);
+                    }
+                }, 1000);
+            }
+
+            // Trigger auto-start
+            setTimeout(autoStart, 1000);
+
+            // Manual Start/Stop buttons (as fallback)
+            $('#start').click(function() {
+                autoStart();
             });
 
             $('#send-btn').click(function() {
@@ -361,7 +419,10 @@
 
             // Interrupt button handler
             $('#interrupt-btn').click(function() {
-                console.log('Interrupting...');
+                console.log('Interrupting and stopping auto-loop...');
+                autoRecordEnabled = false; // Close the loop
+                currentAiText = ""; // Clear AI text buffer
+                
                 fetch('/interrupt_talk', {
                     body: JSON.stringify({
                         sessionid: String(document.getElementById('sessionid').value),
@@ -371,7 +432,8 @@
                     },
                     method: 'POST'
                 }).then(() => {
-                    addChatMessage("Interrupted.", 'system');
+                    addChatMessage("Interrupted. Auto-turn taking disabled.", 'system');
+                    if (isRecording) stopRecording();
                 });
             });
 
