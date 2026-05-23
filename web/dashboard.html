@@ -449,16 +449,32 @@
                 });
             });
 
-            // Push to talk functionality using OpenRouter Whisper STT
+            // Voice recording functionality with Toggle and Auto-stop
             let mediaRecorder;
             let audioChunks = [];
             let isRecording = false;
+            let recognition;
+
+            // Initialize SpeechRecognition for auto-stop detection
+            const isSpeechRecognitionSupported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+            if (isSpeechRecognitionSupported) {
+                recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+                recognition.continuous = false; // Stop after one phrase
+                recognition.interimResults = false;
+                
+                recognition.onend = function() {
+                    if (isRecording) {
+                        console.log('Speech ended naturally, stopping recording...');
+                        stopRecording();
+                    }
+                };
+            }
             
-            $('#voice-record-btn').on('mousedown touchstart', function(e) {
+            $('#voice-record-btn').on('click', function(e) {
                 e.preventDefault();
-                startRecording();
-            }).on('mouseup mouseleave touchend', function() {
-                if (isRecording) {
+                if (!isRecording) {
+                    startRecording();
+                } else {
                     stopRecording();
                 }
             });
@@ -480,8 +496,16 @@
                         mediaRecorder.start();
                         isRecording = true;
                         
-                        $('#voice-record-btn').addClass('recording-pulse');
-                        $('#voice-record-btn').css('opacity', '0.7');
+                        $('#voice-record-btn').addClass('recording-pulse active');
+                        $('#voice-record-btn').find('i').removeClass('bi-mic-fill').addClass('bi-stop-fill');
+                        
+                        if (recognition) {
+                            try {
+                                recognition.start();
+                            } catch (e) {
+                                console.error('Recognition start error:', e);
+                            }
+                        }
                     })
                     .catch(function(error) {
                         console.error('Mic access error:', error);
@@ -492,20 +516,30 @@
             function stopRecording() {
                 if (!isRecording) return;
                 
-                mediaRecorder.stop();
                 isRecording = false;
+                mediaRecorder.stop();
+                
+                if (recognition) {
+                    try {
+                        recognition.stop();
+                    } catch (e) {}
+                }
                 
                 mediaRecorder.stream.getTracks().forEach(track => track.stop());
                 
-                $('#voice-record-btn').removeClass('recording-pulse');
-                $('#voice-record-btn').css('opacity', '');
+                $('#voice-record-btn').removeClass('recording-pulse active');
+                $('#voice-record-btn').find('i').removeClass('bi-stop-fill').addClass('bi-mic-fill');
                 
-                // Wait for the final chunk before sending
                 mediaRecorder.onstop = function() {
                     const blobType = mediaRecorder.mimeType || 'audio/webm';
                     const extension = blobType.includes('webm') ? 'webm' : 'ogg';
                     const audioBlob = new Blob(audioChunks, { type: blobType });
                     
+                    if (audioBlob.size < 1000) { // Too short, probably a glitch
+                        console.log('Audio too short, skipping.');
+                        return;
+                    }
+
                     console.log(`Sending audio for transcription. Type: ${blobType}, Size: ${audioBlob.size} bytes`);
                     
                     const formData = new FormData();
