@@ -7,6 +7,7 @@ import numpy as np
 import asyncio
 from aiohttp import web
 
+from utils.stt import transcribe_audio
 from utils.logger import logger
 
 
@@ -150,12 +151,53 @@ async def is_speaking(request):
     return json_ok(data=avatar_session.is_speaking())
 
 
+async def transcribe(request):
+    """音频转文字接口"""
+    try:
+        form = await request.post()
+        fileobj = form.get("file")
+        if not fileobj:
+            logger.warning("STT: No file uploaded")
+            return json_error("No file uploaded")
+        
+        filebytes = fileobj.file.read()
+        filename = fileobj.filename
+        file_ext = filename.split('.')[-1] if '.' in filename else 'wav'
+        
+        logger.info(f"STT: Received transcription request for {filename}, size: {len(filebytes)} bytes")
+        
+        text = await transcribe_audio(filebytes, file_ext)
+        if text:
+            logger.info(f"STT: Transcription successful: '{text}'")
+            # 如果请求中带有 sessionid 且 type 为 chat，可以直接转发给 LLM
+            sessionid = str(form.get('sessionid', ''))
+            if sessionid and form.get('type') == 'chat':
+                avatar_session = get_session(request, sessionid)
+                if avatar_session:
+                    # Interrupt if requested
+                    avatar_session.flush_talk()
+                    
+                    llm_response = request.app.get("llm_response")
+                    if llm_response:
+                        asyncio.get_event_loop().run_in_executor(
+                            None, llm_response, text, avatar_session, {}
+                        )
+            return json_ok(data={"text": text})
+        else:
+            logger.error("STT: Transcription failed (no text returned)")
+            return json_error("Transcription failed")
+    except Exception as e:
+        logger.exception('transcribe exception:')
+        return json_error(str(e))
+
+
 # ─── 路由注册 ──────────────────────────────────────────────────────────────
 
 def setup_routes(app):
     """注册所有路由到 aiohttp app"""
     app.router.add_post("/human", human)
     app.router.add_post("/humanaudio", humanaudio)
+    app.router.add_post("/transcribe", transcribe)
     app.router.add_post("/set_audiotype", set_audiotype)
     app.router.add_post("/record", record)
     app.router.add_post("/interrupt_talk", interrupt_talk)

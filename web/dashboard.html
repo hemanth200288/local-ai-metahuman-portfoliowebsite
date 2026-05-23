@@ -382,11 +382,16 @@
                                     </div>
                                 </form>
                                 
-                                <!-- Push to Talk Button -->
-                                <div class="voice-record-btn" id="voice-record-btn">
-                                    <i class="bi bi-mic-fill"></i>
+                                <!-- Push to Talk & Interrupt Buttons -->
+                                <div class="d-flex justify-content-center align-items-center gap-4">
+                                    <div class="voice-record-btn" id="voice-record-btn" title="Hold to Talk">
+                                        <i class="bi bi-mic-fill"></i>
+                                    </div>
+                                    <div class="voice-record-btn bg-danger" id="interrupt-btn" title="Interrupt Speaking">
+                                        <i class="bi bi-megaphone-fill"></i>
+                                    </div>
                                 </div>
-                                <div class="voice-record-label">Hold to Talk, Release to Send</div>
+                                <div class="voice-record-label">Hold Mic to Talk | Click Megaphone to Interrupt</div>
                             </div>
                             
                             <!-- Speech Mode -->
@@ -595,42 +600,26 @@
                 $('#chat-message').val('');
             });
 
-            // Push to talk functionality
+            // Interrupt button handler
+            $('#interrupt-btn').click(function() {
+                console.log('Interrupting...');
+                fetch('/interrupt_talk', {
+                    body: JSON.stringify({
+                        sessionid: String(document.getElementById('sessionid').value),
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    method: 'POST'
+                }).then(() => {
+                    addChatMessage("Interrupted.", 'system');
+                });
+            });
+
+            // Push to talk functionality using OpenRouter Whisper STT
             let mediaRecorder;
             let audioChunks = [];
             let isRecording = false;
-            let recognition;
-            
-            const isSpeechRecognitionSupported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
-            
-            if (isSpeechRecognitionSupported) {
-                recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-                recognition.continuous = true;
-                recognition.interimResults = true;
-                recognition.lang = 'en-US';
-                
-                recognition.onresult = function(event) {
-                    let interimTranscript = '';
-                    let finalTranscript = '';
-                    
-                    for (let i = event.resultIndex; i < event.results.length; ++i) {
-                        if (event.results[i].isFinal) {
-                            finalTranscript += event.results[i][0].transcript;
-                        } else {
-                            interimTranscript += event.results[i][0].transcript;
-                            $('#chat-message').val(interimTranscript);
-                        }
-                    }
-                    
-                    if (finalTranscript) {
-                        $('#chat-message').val(finalTranscript);
-                    }
-                };
-                
-                recognition.onerror = function(event) {
-                    console.error('Speech recognition error:', event.error);
-                };
-            }
             
             $('#voice-record-btn').on('mousedown touchstart', function(e) {
                 e.preventDefault();
@@ -659,11 +648,7 @@
                         isRecording = true;
                         
                         $('#voice-record-btn').addClass('recording-pulse');
-                        $('#voice-record-btn').css('background-color', '#dc3545');
-                        
-                        if (recognition) {
-                            recognition.start();
-                        }
+                        $('#voice-record-btn').css('opacity', '0.7');
                     })
                     .catch(function(error) {
                         console.error('Mic access error:', error);
@@ -680,32 +665,35 @@
                 mediaRecorder.stream.getTracks().forEach(track => track.stop());
                 
                 $('#voice-record-btn').removeClass('recording-pulse');
-                $('#voice-record-btn').css('background-color', '');
+                $('#voice-record-btn').css('opacity', '');
                 
-                if (recognition) {
-                    recognition.stop();
-                }
-                
-                setTimeout(function() {
-                    const recognizedText = $('#chat-message').val().trim();
-                    if (recognizedText) {
-                        fetch('/human', {
-                            body: JSON.stringify({
-                                text: recognizedText,
-                                type: 'chat',
-                                interrupt: true,
-                                sessionid: String(document.getElementById('sessionid').value),
-                            }),
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            method: 'POST'
-                        });
-                        
-                        addChatMessage(recognizedText, 'user');
-                        $('#chat-message').val('');
-                    }
-                }, 500); 
+                // Wait for the final chunk before sending
+                mediaRecorder.onstop = function() {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const formData = new FormData();
+                    formData.append('file', audioBlob, 'voice.wav');
+                    formData.append('sessionid', String(document.getElementById('sessionid').value));
+                    formData.append('type', 'chat'); // Tell backend to forward to LLM
+                    
+                    addChatMessage("Transcribing...", 'system');
+                    
+                    fetch('/transcribe', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.code === 0 && data.data.text) {
+                            addChatMessage(data.data.text, 'user');
+                        } else {
+                            addChatMessage("Transcription failed.", 'system');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('STT Error:', error);
+                        addChatMessage("STT error occurred.", 'system');
+                    });
+                };
             }
 
             if (typeof window.onWebRTCConnected === 'function') {
