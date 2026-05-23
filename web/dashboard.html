@@ -268,7 +268,10 @@
     </div>
 
 
+    <script src="config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
     <script src="client.js"></script>
+    <script src="livekit_client.js"></script>
     <script src="srs.sdk.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -332,7 +335,7 @@
                 const sid = String(document.getElementById('sessionid').value);
                 if (sid === "0") return; // Session not initialized
 
-                fetch('/is_speaking', {
+                fetch(`${window.CONFIG.API_BASE_URL}/is_speaking`, {
                     method: 'POST',
                     body: JSON.stringify({ sessionid: sid }),
                     headers: { 'Content-Type': 'application/json' }
@@ -373,7 +376,7 @@
                         
                         setTimeout(() => {
                             console.log('Auto-triggering initial greeting for session:', sid);
-                            fetch('/human', {
+                            fetch(`${window.CONFIG.API_BASE_URL}/human`, {
                                 body: JSON.stringify({
                                     text: "Hello! I am your AI portfolio assistant. I have automatically activated to help you. How can I assist you today?",
                                     type: 'chat',
@@ -400,7 +403,7 @@
                 var message = $('#chat-message').val();
                 if (!message.trim()) return;
                 
-                fetch('/human', {
+                fetch(`${window.CONFIG.API_BASE_URL}/human`, {
                     body: JSON.stringify({
                         text: message,
                         type: 'chat',
@@ -423,7 +426,7 @@
                 autoRecordEnabled = false; // Close the loop
                 currentAiText = ""; // Clear AI text buffer
                 
-                fetch('/interrupt_talk', {
+                fetch(`${window.CONFIG.API_BASE_URL}/interrupt_talk`, {
                     body: JSON.stringify({
                         sessionid: String(document.getElementById('sessionid').value),
                     }),
@@ -537,7 +540,7 @@
                     
                     addChatMessage("Transcribing...", 'system');
                     
-                    fetch('/transcribe', {
+                    fetch(`${window.CONFIG.API_BASE_URL}/transcribe`, {
                         method: 'POST',
                         body: formData
                     })

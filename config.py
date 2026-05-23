@@ -54,12 +54,22 @@ def parse_args():
 
     # ─── Transport ─────────────────────────────────────────────────────────
     parser.add_argument('--transport', type=str, default='webrtc',
-                        help="output: rtcpush/webrtc/rtmp/virtualcam")
+                        help="output: rtcpush/webrtc/rtmp/virtualcam/livekit")
     parser.add_argument('--push_url', type=str,
                         default='http://localhost:1985/rtc/v1/whip/?app=live&stream=livestream')
     parser.add_argument('--max_session', type=int, default=1)
     parser.add_argument('--listenport', type=int, default=8010,
                         help="web listen port")
+
+    # ─── LiveKit ───────────────────────────────────────────────────────────
+    parser.add_argument('--livekit_url', type=str, default=os.getenv('LIVEKIT_URL', ''),
+                        help="LiveKit server URL")
+    parser.add_argument('--livekit_api_key', type=str, default=os.getenv('LIVEKIT_API_KEY', ''),
+                        help="LiveKit API Key")
+    parser.add_argument('--livekit_api_secret', type=str, default=os.getenv('LIVEKIT_API_SECRET', ''),
+                        help="LiveKit API Secret")
+    parser.add_argument('--livekit_room', type=str, default='livetalking_room',
+                        help="LiveKit Room Name")
 
     opt = parser.parse_args()
 

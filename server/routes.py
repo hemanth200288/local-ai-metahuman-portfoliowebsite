@@ -150,6 +150,33 @@ async def is_speaking(request):
         return json_error("session not found")
     return json_ok(data=avatar_session.is_speaking())
 
+async def get_livekit_token(request):
+    """获取 LiveKit 加入令牌"""
+    try:
+        from livekit import api
+        import os
+        
+        # Access opt from app context if available, or use environment variables
+        # Since opt is global in app.py, we might need a better way to access it here
+        # For now, we'll try to get it from the session_manager or environment
+        api_key = os.getenv('LIVEKIT_API_KEY')
+        api_secret = os.getenv('LIVEKIT_API_SECRET')
+        room_name = request.query.get('room', 'livetalking_room')
+        identity = request.query.get('identity', f"user_{np.random.randint(1000, 9999)}")
+
+        if not api_key or not api_secret:
+            return json_error("LiveKit credentials not configured on server")
+
+        token = api.AccessToken(api_key, api_secret) \
+            .with_identity(identity) \
+            .with_name(identity) \
+            .with_grants(api.VideoGrants(room_join=True, room=room_name)) \
+            .to_jwt()
+
+        return json_ok(data={"token": token, "url": os.getenv('LIVEKIT_URL', '')})
+    except Exception as e:
+        logger.exception('get_livekit_token exception:')
+        return json_error(str(e))
 
 async def transcribe(request):
     """音频转文字接口"""
@@ -202,4 +229,5 @@ def setup_routes(app):
     app.router.add_post("/record", record)
     app.router.add_post("/interrupt_talk", interrupt_talk)
     app.router.add_post("/is_speaking", is_speaking)
+    app.router.add_get("/token", get_livekit_token)
     app.router.add_static('/', path='web')

@@ -108,7 +108,8 @@ class BaseAvatar:
             'webrtc': 'streamout.webrtc',
             'rtcpush': 'streamout.webrtc',
             'rtmp': 'streamout.rtmp',
-            'virtualcam': 'streamout.virtualcam'
+            'virtualcam': 'streamout.virtualcam',
+            'livekit': 'streamout.livekit_output'
         }
 
         # 初始化 Output 模块
